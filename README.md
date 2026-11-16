@@ -4,7 +4,7 @@ Telegram bot and scheduled SOCKS5 proxy publisher built for Vercel Serverless Fu
 
 ## Architecture
 
-This repository uses Telegram webhooks and Vercel Cron. It does not run a permanent Express server, Docker daemon, long-polling worker, or in-process hourly timer. Vercel invokes the scanner on the schedule in `vercel.json`.
+This repository uses Telegram webhooks and Vercel Cron. It does not run a permanent Express server, Docker daemon, long-polling worker, or in-process hourly timer. An hourly GitHub Actions workflow invokes the scanner endpoint on Vercel. This avoids the Vercel Hobby Cron limit (one scheduled run per day).
 
 A private MTProto proxy is a separate service and must run on a VPS or another persistent container host. Vercel is not a Docker host.
 
@@ -28,10 +28,10 @@ A private MTProto proxy is a separate service and must run on a VPS or another p
 - `APP_URL`: production Vercel URL.
 - `TELEGRAM_WEBHOOK_SECRET`: random secret (Telegram accepts 1-256 characters from A-Z, a-z, 0-9, underscore and hyphen).
 - `SETUP_SECRET`: long random secret protecting webhook registration.
-- `CRON_SECRET`: long random secret protecting the scan endpoint.
+- `CRON_SECRET`: long random secret protecting the scan endpoint. Set the exact same value in Vercel Environment Variables and GitHub repository Actions secrets.
 - `PROXY_SOURCES`: comma-separated raw text SOCKS5 lists.
 
-Optional, recommended for reliable deduplication:
+Optional but strongly recommended for reliable deduplication (especially with hourly scans):
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 
@@ -42,20 +42,21 @@ Without Upstash Redis, duplicate tracking is best-effort and can reset when a se
 1. Import this GitHub repository into Vercel.
 2. Add all required environment variables in Project Settings > Environment Variables.
 3. Redeploy after adding variables.
-4. Register the Telegram webhook once:
+4. In GitHub repository Settings > Secrets and variables > Actions, create a repository secret named `CRON_SECRET` with the same value configured in Vercel. The workflow `.github/workflows/proxy-scan.yml` will then call the scanner hourly. You can also run it manually from the Actions tab.
+5. Register the Telegram webhook once:
 
 ```bash
 curl -X POST "https://YOUR-APP.vercel.app/api/setup" \
   -H "Authorization: Bearer YOUR_SETUP_SECRET"
 ```
 
-5. Check:
+6. Check:
 
 ```bash
 curl "https://YOUR-APP.vercel.app/api/health"
 ```
 
-6. Make the bot an administrator in the channel with permission to post messages.
+7. Make the bot an administrator in the channel with permission to post messages.
 
 ## Local syntax check
 
