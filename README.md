@@ -1,74 +1,86 @@
 # Telegram Proxy Hub
 
-Telegram bot and scheduled SOCKS5 proxy publisher built for Vercel Serverless Functions.
+A Telegram SOCKS5 proxy bot deployed on Vercel Serverless Functions, with Supabase persistence and an hourly GitHub Actions trigger.
 
 ## Architecture
 
-This repository uses Telegram webhooks and Vercel Cron. It does not run a permanent Express server, Docker daemon, long-polling worker, or in-process hourly timer. An hourly GitHub Actions workflow invokes the scanner endpoint on Vercel. This avoids the Vercel Hobby Cron limit (one scheduled run per day).
-
-A private MTProto proxy is a separate service and must run on a VPS or another persistent container host. Vercel is not a Docker host.
+- Vercel handles Telegram webhooks and HTTP endpoints.
+- Supabase stores Telegram users and published proxy records.
+- GitHub Actions calls the protected scanner endpoint hourly.
+- No Docker, VPS, always-on Node process, or Express keep-alive server is required.
 
 ## Features
 
-- Telegram webhook protected by Telegram's secret-token header.
-- Mandatory channel membership check before the bot offers access.
-- Fetches public SOCKS5 text lists and checks SOCKS5 connectivity to a Telegram endpoint.
-- Publishes a limited number of newly seen proxies to the channel.
-- Optional Upstash Redis deduplication (7 days).
-- Health endpoint: `/api/health`.
-- Protected webhook registration endpoint: `POST /api/setup`.
-- Protected scan endpoint: `GET /api/cron`.
+- Forced public-channel subscription check.
+- Delivers the latest saved SOCKS5 proxy links in private chat after membership verification.
+- Collects public SOCKS5 lists and checks SOCKS5 connectivity to a Telegram endpoint.
+- Publishes newly discovered proxies to the Telegram channel.
+- Supabase persistence for users and proxy records.
+- Protected setup, health, scan, and stats endpoints.
 
 ## Required Vercel environment variables
 
-- `BOT_TOKEN`: Telegram bot token from BotFather.
-- `CHANNEL_ID`: numeric Telegram channel ID (usually starts with `-100`).
+- `BOT_TOKEN`: BotFather token. Keep it secret.
+- `CHANNEL_ID`: numeric channel ID, normally starts with `-100`.
 - `CHANNEL_URL`: public channel URL, e.g. `https://t.me/YourChannel`.
-- `CHANNEL_USERNAME`: channel username including `@`.
-- `APP_URL`: production Vercel URL.
-- `TELEGRAM_WEBHOOK_SECRET`: random secret (Telegram accepts 1-256 characters from A-Z, a-z, 0-9, underscore and hyphen).
-- `SETUP_SECRET`: long random secret protecting webhook registration.
-- `CRON_SECRET`: long random secret protecting the scan endpoint. Set the exact same value in Vercel Environment Variables and GitHub repository Actions secrets.
-- `PROXY_SOURCES`: comma-separated raw text SOCKS5 lists.
+- `APP_URL`: `https://telegram-proxy-hub.vercel.app`.
+- `TELEGRAM_WEBHOOK_SECRET`: random string using letters, digits, underscore or hyphen.
+- `SETUP_SECRET`: long random secret for the setup and stats endpoints.
+- `CRON_SECRET`: long random secret for the scanner endpoint.
+- `SUPABASE_URL`: Supabase project URL.
+- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service-role secret. Server-side only; never commit it or expose it to clients.
+- `PROXY_SOURCES`: comma-separated raw text SOCKS5 source URLs.
 
-Optional but strongly recommended for reliable deduplication (especially with hourly scans):
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
+Optional:
+- `MAX_LATENCY_MS` (default 1500)
+- `MAX_PROXIES_PER_POST` (default 5)
+- `MAX_SCAN_CANDIDATES` (default 100)
 
-Without Upstash Redis, duplicate tracking is best-effort and can reset when a serverless instance is recycled.
+## Supabase setup
 
-## Setup after deployment
+1. Open the Supabase project's SQL Editor.
+2. Run the complete SQL in `supabase/schema.sql`.
+3. Copy the project URL and the service-role key into Vercel environment variables. Do not use the publishable/anon key for this server-side service-role integration.
 
-1. Import this GitHub repository into Vercel.
-2. Add all required environment variables in Project Settings > Environment Variables.
-3. Redeploy after adding variables.
-4. In GitHub repository Settings > Secrets and variables > Actions, create a repository secret named `CRON_SECRET` with the same value configured in Vercel. The workflow `.github/workflows/proxy-scan.yml` will then call the scanner hourly. You can also run it manually from the Actions tab.
-5. Register the Telegram webhook once:
+## Vercel and Telegram setup
+
+1. Add the required environment variables to the Production environment in Vercel.
+2. Redeploy the project after saving the variables.
+3. Add the bot as a channel administrator and grant permission to post messages.
+4. Call the protected setup endpoint once:
 
 ```bash
-curl -X POST "https://YOUR-APP.vercel.app/api/setup" \
+curl -X POST "https://telegram-proxy-hub.vercel.app/api/setup" \
   -H "Authorization: Bearer YOUR_SETUP_SECRET"
 ```
 
-6. Check:
+The setup endpoint verifies the bot token and its channel posting permission before registering the Telegram webhook.
 
-```bash
-curl "https://YOUR-APP.vercel.app/api/health"
-```
+## Hourly scan
 
-7. Make the bot an administrator in the channel with permission to post messages.
+Create a GitHub Actions repository secret named `CRON_SECRET` at:
+Settings > Secrets and variables > Actions.
 
-## Local syntax check
+Use the exact same value as Vercel's `CRON_SECRET`. The workflow in `.github/workflows/proxy-scan.yml` runs hourly and can also be triggered manually from the Actions tab.
+
+## Endpoints
+
+- `GET /api/health`: configuration status.
+- `POST /api/setup`: protected Telegram webhook setup.
+- `GET /api/cron`: protected proxy scan and channel publishing.
+- `GET /api/stats`: protected user and active-proxy counts. Send `Authorization: Bearer YOUR_SETUP_SECRET`.
+
+## Validation
 
 ```bash
 npm install
 npm run check
 ```
 
-## Important limitations
+## Limitations and safety
 
-- The current scanner supports SOCKS5 lists only. It does not parse or validate MTProto secrets.
-- A successful SOCKS5 handshake to a Telegram endpoint is only a connectivity check. It is not a security audit, anonymity guarantee, or guarantee of access on every ISP.
-- Public proxies are operated by third parties. Do not use them for confidential traffic or sensitive accounts.
-- Vercel Cron frequency depends on the Vercel plan. The current schedule is hourly; verify that your plan allows hourly cron execution.
-- Public proxy lists may change format, disappear, or include malicious endpoints. Review sources before use.
+- This deployment currently supports SOCKS5 text-list sources. It does not run a private MTProto server or validate MTProto secret links.
+- A successful SOCKS5 connection test is not a guarantee of service on every ISP, nor a security or anonymity audit.
+- Public proxies are operated by third parties. Do not use them for sensitive accounts or confidential traffic.
+- GitHub Actions scheduled execution depends on repository/account usage limits and may be delayed. It is not a contractual 24/7 service.
+- The Supabase service-role key bypasses Row Level Security. Keep it only in Vercel server-side environment variables.
