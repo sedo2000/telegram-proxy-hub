@@ -16,9 +16,9 @@ function message(proxy) {
     "🛡 <b>النوع:</b> SOCKS5",
     "🌐 <b>IP:</b> <code>" + proxy.host + "</code>",
     "🔌 <b>Port:</b> <code>" + proxy.port + "</code>",
-    "⚡ <b>زمن الاتصال:</b> " + proxy.latency + " ms",
+    "⚡ <b>زمن الفحص:</b> " + proxy.latency + " ms",
     "",
-    "🟢 نجح اختبار اتصال SOCKS5 إلى نقطة اتصال تيليجرام وقت الفحص.",
+    "🟢 نجح اختبار SOCKS5 إلى نقطة اتصال تيليجرام وقت الفحص.",
     "⚠️ بروكسي عام؛ لا تستخدمه للمعلومات الحساسة."
   ].join("\n");
 }
@@ -35,46 +35,34 @@ function keyboard(proxy) {
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).send("Method Not Allowed");
-
   const secret = process.env.CRON_SECRET;
-  const authorization = req.headers.authorization || "";
-  if (!secret || !safeEqual(authorization, "Bearer " + secret)) {
+  if (!secret || !safeEqual(req.headers.authorization || "", "Bearer " + secret)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-
-  if (!process.env.BOT_TOKEN || !process.env.CHANNEL_ID) {
-    return res.status(500).json({ error: "BOT_TOKEN or CHANNEL_ID is missing" });
-  }
+  const required = ["BOT_TOKEN", "CHANNEL_ID", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
+  const missing = required.filter(key => !process.env[key]);
+  if (missing.length) return res.status(500).json({ error: "Missing environment variables", missing });
 
   try {
     const working = await collectWorkingProxies();
     const bot = new Telegraf(process.env.BOT_TOKEN);
-    const maxPosts = Math.max(1, Number(process.env.MAX_PROXIES_PER_POST || 5));
+    const maxPosts = Math.max(1, Math.min(10, Number(process.env.MAX_PROXIES_PER_POST || 5)));
     let published = 0;
-
     for (const proxy of working) {
       if (published >= maxPosts) break;
       if (await hasPublished(proxy.id)) continue;
-
-      await bot.telegram.sendMessage(
-        process.env.CHANNEL_ID,
-        message(proxy),
-        { parse_mode: "HTML", ...keyboard(proxy) }
-      );
-
-      await markPublished(proxy.id);
+      await bot.telegram.sendMessage(process.env.CHANNEL_ID, message(proxy), {
+        parse_mode: "HTML",
+        ...keyboard(proxy)
+      });
+      await markPublished(proxy);
       published++;
     }
-
     return res.status(200).json({
       ok: true,
-      tested: working.length,
+      candidatesPassed: working.length,
       published,
-      checkedAt: new Date().toISOString(),
-      persistence: Boolean(
-        process.env.UPSTASH_REDIS_REST_URL &&
-        process.env.UPSTASH_REDIS_REST_TOKEN
-      )
+      checkedAt: new Date().toISOString()
     });
   } catch (error) {
     console.error("Cron scan failed:", error);
