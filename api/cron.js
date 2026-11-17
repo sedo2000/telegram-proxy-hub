@@ -10,23 +10,29 @@ function safeEqual(a, b) {
 }
 
 function message(proxy) {
+  const mtproto = proxy.type === "mtproto";
   return [
     "🚀 <b>بروكسي تيليجرام جديد</b>",
     "",
-    "🛡 <b>النوع:</b> SOCKS5",
-    "🌐 <b>IP:</b> <code>" + proxy.host + "</code>",
-    "🔌 <b>Port:</b> <code>" + proxy.port + "</code>",
-    "⚡ <b>زمن الفحص:</b> " + proxy.latency + " ms",
+    "🛡 <b>النوع:</b> " + (mtproto ? "MTProto" : "SOCKS5"),
+    "🌐 <b>الخادم:</b> <code>" + proxy.host + "</code>",
+    "🔌 <b>المنفذ:</b> <code>" + proxy.port + "</code>",
+    mtproto ? "🔑 <b>المفتاح:</b> <code>" + proxy.secret + "</code>" : "",
+    "⚡ <b>زمن اتصال TCP:</b> " + proxy.latency + " ms",
     "",
-    "🟢 نجح اختبار SOCKS5 إلى نقطة اتصال تيليجرام وقت الفحص.",
-    "⚠️ بروكسي عام؛ لا تستخدمه للمعلومات الحساسة."
-  ].join("\n");
+    mtproto
+      ? "🟡 تم التحقق من فتح منفذ TCP فقط؛ لم يتم إثبات نجاح مصافحة MTProto."
+      : "🟢 نجح اختبار SOCKS5 إلى نقطة اتصال تيليجرام وقت الفحص.",
+    "⚠️ بروكسي عام من طرف ثالث؛ لا تستخدمه للمعلومات الحساسة."
+  ].filter(Boolean).join("\n");
 }
 
 function keyboard(proxy) {
-  const connect = "tg://socks?server=" + encodeURIComponent(proxy.host) + "&port=" + proxy.port;
+  const connect = proxy.type === "mtproto"
+    ? "tg://proxy?server=" + encodeURIComponent(proxy.host) + "&port=" + proxy.port + "&secret=" + encodeURIComponent(proxy.secret)
+    : "tg://socks?server=" + encodeURIComponent(proxy.host) + "&port=" + proxy.port;
   const share = "https://t.me/share/url?url=" + encodeURIComponent(connect) +
-    "&text=" + encodeURIComponent("جرب بروكسي تيليجرام");
+    "&text=" + encodeURIComponent("جرب بروكسي تيليجرام " + proxy.type.toUpperCase());
   return Markup.inlineKeyboard([
     [Markup.button.url("🔗 اتصال بالبروكسي", connect)],
     [Markup.button.url("📤 مشاركة مع الأصدقاء", share)]
@@ -48,7 +54,7 @@ module.exports = async function handler(req, res) {
     const bot = new Telegraf(process.env.BOT_TOKEN);
     const maxPosts = Math.max(1, Math.min(10, Number(process.env.MAX_PROXIES_PER_POST || 5)));
     let published = 0;
-    for (const proxy of working) {
+    for (const proxy of [...working.mtproto, ...working.socks5].sort((a, b) => a.latency - b.latency)) {
       if (published >= maxPosts) break;
       if (await hasPublished(proxy.id)) continue;
       await bot.telegram.sendMessage(process.env.CHANNEL_ID, message(proxy), {
@@ -60,9 +66,10 @@ module.exports = async function handler(req, res) {
     }
     return res.status(200).json({
       ok: true,
-      candidatesPassed: working.length,
+      candidatesPassed: { mtproto: working.mtproto.length, socks5: working.socks5.length },
       published,
-      checkedAt: new Date().toISOString()
+      checkedAt: new Date().toISOString(),
+      note: "MTProto entries passed a TCP reachability check only, not a full protocol handshake."
     });
   } catch (error) {
     console.error("Cron scan failed:", error);
