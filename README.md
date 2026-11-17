@@ -13,7 +13,7 @@ A Telegram proxy discovery bot deployed on Vercel Serverless Functions, with Sup
 
 - Forced public-channel subscription check.
 - Delivers latest saved SOCKS5 and MTProto proxy links in private chat.
-- Collects public SOCKS5 and MTProto text-list sources.
+- Collects public SOCKS5 and MTProto text-list sources.\n- Ingests MTProto links posted in the configured Telegram source channel (`SOURCE_CHANNEL_USERNAME`, default `I5I5Ie`).
 - Checks SOCKS5 connectivity to a Telegram endpoint.
 - Checks MTProto server TCP reachability and preserves the MTProto secret.
 - Publishes newly discovered proxies to the channel with Telegram connection links.
@@ -29,7 +29,7 @@ A Telegram proxy discovery bot deployed on Vercel Serverless Functions, with Sup
 - `SUPABASE_URL`: Supabase project URL.
 - `SUPABASE_SERVICE_ROLE_KEY`: server-side Supabase service-role secret.
 - `PROXY_SOURCES`: comma-separated raw text SOCKS5 source URLs (optional if MTProto sources are configured).
-- `MTPROTO_SOURCES`: comma-separated raw text MTProto source URLs (optional if SOCKS5 sources are configured). Each line may be a Telegram `t.me/proxy` / `tg://proxy` link or `host:port:secret`.
+- `SOURCE_CHANNEL_USERNAME`: source channel username without `@` (default `I5I5Ie`).\n- `MTPROTO_SOURCES`: comma-separated raw text MTProto source URLs (optional if SOCKS5 sources are configured). Each line may be a Telegram `t.me/proxy` / `tg://proxy` link or `host:port:secret`.
 
 Optional:
 - `MAX_LATENCY_MS` (default 1500)
