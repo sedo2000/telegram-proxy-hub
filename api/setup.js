@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
     const webhookUrl = process.env.APP_URL.replace(/\/+$/, "") + "/api/webhook";
     const result = await bot.telegram.setWebhook(webhookUrl, {
       secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
-      allowed_updates: ["message", "callback_query"],
+      allowed_updates: ["message", "callback_query", "channel_post"],
       drop_pending_updates: false
     });
     return res.status(200).json({
@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
       bot: "@" + me.username,
       channel: channel.title || channel.username,
       webhookUrl,
-      note: "Webhook configured and channel posting permission verified."
+      note: "Webhook configured; channel posting permission verified; channel_post updates enabled."
     });
   } catch (error) {
     console.error("Webhook setup failed:", error);
