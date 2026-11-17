@@ -32,3 +32,16 @@ alter table public.proxies enable row level security;
 
 -- The application uses the Supabase service-role key only in Vercel server-side functions.
 -- Do not expose this key in a browser, mobile app, or public repository.
+
+ 
+create index if not exists proxies_mtproto_active_latency_idx
+  on public.proxies (latency_ms asc)
+  where active = true and type = 'mtproto' and secret is not null;
+
+create table if not exists public.favorites (
+  telegram_id bigint not null references public.users(telegram_id) on delete cascade,
+  proxy_key text not null references public.proxies(proxy_key) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (telegram_id, proxy_key)
+);
+alter table public.favorites enable row level security;
